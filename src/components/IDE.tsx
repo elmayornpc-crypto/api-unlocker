@@ -185,7 +185,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
       // Load children if not already loaded
       if (!file.expanded && !file.children) {
         try {
-          const response = await fetch(`${apiURL}/api/files?action=list&path=${encodeURIComponent(file.path)}`);
+          const response = await fetch(`/api/files?action=list&path=${encodeURIComponent(file.path)}`);
           const data = await response.json();
           if (data.success) {
             setFiles(prev => prev.map(f => 
