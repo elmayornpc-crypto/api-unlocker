@@ -6,7 +6,7 @@ import IDE from '@/components/IDE';
 import { useResizable } from '@/hooks/useResizable';
 
 // Code block component with syntax highlighting
-function CodeBlock({ code, language }: { code: string; language: string }) {
+function CodeBlock({ code, language, filename }: { code: string; language: string; filename?: string }) {
   const getLanguageColor = (lang: string) => {
     const colors: Record<string, string> = {
       javascript: '#f7df1e',
@@ -32,6 +32,8 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
     return colors[lang.toLowerCase()] || colors.default;
   };
 
+  const displayName = filename || language || 'code';
+
   return (
     <div className="my-2 rounded-lg overflow-hidden bg-[#1e1e1e] border border-[#3c3c3c]">
       <div 
@@ -39,7 +41,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
         style={{ backgroundColor: getLanguageColor(language) + '40', borderBottom: `2px solid ${getLanguageColor(language)}` }}
       >
         <span className="w-2 h-2 rounded-full" style={{ backgroundColor: getLanguageColor(language) }}></span>
-        {language || 'code'}
+        <span className="font-mono">{displayName}</span>
       </div>
       <pre className="p-3 text-xs text-[#d4d4d4] overflow-x-auto whitespace-pre-wrap font-mono leading-relaxed">
         <code>{code}</code>
@@ -53,24 +55,40 @@ function MessageContent({ content }: { content: string }) {
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   
-  // Regex to match code blocks with optional language
-  const codeBlockRegex = /```(\w+)?\n?([\s\S]*?)```/g;
+  // Regex to match code blocks with language:filename format
+  // Matches: ```javascript:app.js or ```typescript or ```python:main.py
+  const codeBlockRegex = /```([\w]+)(?::([\w.-]+))?\n?([\s\S]*?)```/g;
   let match;
   
   while ((match = codeBlockRegex.exec(content)) !== null) {
     // Add text before code block
     if (match.index > lastIndex) {
       const text = content.slice(lastIndex, match.index);
-      parts.push(
-        <span key={`text-${lastIndex}`} className="whitespace-pre-wrap">{text}</span>
-      );
+      // Style file operations (Creating:, Editing:, Deleting:)
+      const styledText = text.split('\n').map((line, i) => {
+        if (line.match(/^Creating:|^Editing:|^Deleting:/)) {
+          const isCreating = line.startsWith('Creating');
+          const isEditing = line.startsWith('Editing');
+          const isDeleting = line.startsWith('Deleting');
+          const color = isCreating ? 'text-green-400' : isEditing ? 'text-yellow-400' : 'text-red-400';
+          return (
+            <div key={i} className={`${color} font-mono text-xs my-1`}>
+              {line}
+            </div>
+          );
+        }
+        return <span key={i} className="whitespace-pre-wrap">{line}
+</span>;
+      });
+      parts.push(<div key={`text-${lastIndex}`}>{styledText}</div>);
     }
     
     // Add code block
     const language = match[1] || 'text';
-    const code = match[2].trim();
+    const filename = match[2]; // optional filename
+    const code = match[3].trim();
     parts.push(
-      <CodeBlock key={`code-${match.index}`} code={code} language={language} />
+      <CodeBlock key={`code-${match.index}`} code={code} language={language} filename={filename} />
     );
     
     lastIndex = match.index + match[0].length;
@@ -78,9 +96,24 @@ function MessageContent({ content }: { content: string }) {
   
   // Add remaining text
   if (lastIndex < content.length) {
-    parts.push(
-      <span key={`text-end`} className="whitespace-pre-wrap">{content.slice(lastIndex)}</span>
-    );
+    const text = content.slice(lastIndex);
+    // Style file operations in remaining text too
+    const styledText = text.split('\n').map((line, i) => {
+      if (line.match(/^Creating:|^Editing:|^Deleting:/)) {
+        const isCreating = line.startsWith('Creating');
+        const isEditing = line.startsWith('Editing');
+        const isDeleting = line.startsWith('Deleting');
+        const color = isCreating ? 'text-green-400' : isEditing ? 'text-yellow-400' : 'text-red-400';
+        return (
+          <div key={i} className={`${color} font-mono text-xs my-1`}>
+            {line}
+          </div>
+        );
+      }
+      return <span key={i} className="whitespace-pre-wrap">{line}
+</span>;
+    });
+    parts.push(<div key={`text-end`}>{styledText}</div>);
   }
   
   return <>{parts}</>;
@@ -172,27 +205,22 @@ export default function Home() {
               const data = JSON.parse(line.slice(6));
 
               if (data.status === 'thinking') {
+                // Don't show "Thinking..." message, just update status
                 setMessages(prev => prev.map(msg => 
                   msg.id === assistantMessage.id 
-                    ? { ...msg, status: 'thinking', content: 'Thinking...' }
+                    ? { ...msg, status: 'thinking' }
                     : msg
                 ));
               } else if (data.status === 'generating') {
+                // Don't show placeholder, just update status
                 setMessages(prev => prev.map(msg => 
                   msg.id === assistantMessage.id 
-                    ? { ...msg, status: 'generating', content: 'Generating response...' }
+                    ? { ...msg, status: 'generating' }
                     : msg
                 ));
-                const chunk = data.content;
-                if (chunk) {
-                  setStreamingContent(prev => prev + chunk);
-                  setMessages(prev => prev.map(msg => 
-                    msg.id === assistantMessage.id 
-                      ? { ...msg, content: msg.content + chunk, status: 'generating' }
-                      : msg
-                  ));
-                }
               } else if (data.content) {
+                // Stream the actual content
+                setStreamingContent(prev => prev + data.content);
                 setMessages(prev => prev.map(msg => 
                   msg.id === assistantMessage.id 
                     ? { ...msg, content: msg.content + data.content, status: 'generating' }
@@ -205,6 +233,7 @@ export default function Home() {
                     : msg
                 ));
                 setLastAIResponse(assistantMessage.content);
+                setStreamingContent(''); // Clear streaming content
               } else if (data.status === 'error') {
                 setMessages(prev => prev.map(msg => 
                   msg.id === assistantMessage.id 

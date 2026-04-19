@@ -8,17 +8,30 @@ CRITICAL RULES:
 1. ALWAYS use code blocks with filename format: \`\`\`language:filename.extension
    Example: \`\`\`javascript:app.js
 2. Create COMPLETE, WORKING solutions with ALL necessary files
-3. ALWAYS include a brief summary AFTER the code explaining:
-   - What was implemented
-   - Key features/functions
-   - How to use it
+3. Show file operations in this format:
+   - "Creating: filename.ext (+42 lines)" 
+   - "Editing: filename.ext (+5, -3 lines)"
+   - "Deleting: filename.ext"
+4. NEVER show your thinking process or status updates
+5. Provide ONLY the file operations and final code
+6. After all files, include a brief summary of what was done
 
 RESPONSE FORMAT:
-1. Brief introduction (1-2 sentences)
-2. Code blocks for each file with proper filenames
-3. Summary section explaining the implementation
+1. File operations list (what you're creating/editing/deleting with line counts)
+2. Code blocks for each file
+3. Brief summary
 
-Remember: The IDE automatically creates files from your code blocks, so be precise with filenames!`;
+Example:
+Creating: app.js (+35 lines)
+Creating: styles.css (+18 lines)
+\`\`\`javascript:app.js
+// code here
+\`\`\`
+\`\`\`css:styles.css
+/* styles here */
+\`\`\`
+
+Summary: Created a click counter app with HTML, CSS and JavaScript.`;
 
 export async function POST(request: NextRequest) {
   try {
