@@ -96,7 +96,6 @@ interface Message {
 }
 
 export default function Home() {
-  const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -142,7 +141,7 @@ export default function Home() {
     setMessages(prev => [...prev, assistantMessage]);
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -343,7 +342,6 @@ export default function Home() {
               setFilesToOpen(prev => [...prev, path]);
             }}
             autoOpenFile={filesToOpen[filesToOpen.length - 1]}
-            apiURL={API_URL}
           />
         </div>
 

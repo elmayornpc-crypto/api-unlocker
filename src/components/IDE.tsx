@@ -20,10 +20,9 @@ interface IDEProps {
   aiResponse: string;
   onFileCreated: (path: string) => void;
   autoOpenFile?: string;
-  apiURL?: string;
 }
 
-export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpenFile, apiURL = 'http://localhost:3000' }: IDEProps) {
+export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpenFile }: IDEProps) {
   const [files, setFiles] = useState<FileItem[]>([]);
   const [currentPath, setCurrentPath] = useState(workingFolder || 'C:\\Users\\USER\\Desktop\\SUPERPROJECTS');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
@@ -92,7 +91,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
       // Ensure the working folder exists
       setAiStatus('Ensuring working folder exists...');
       try {
-        await fetch(`${apiURL}/api/files`, {
+        await fetch('/api/files', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -116,7 +115,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
         console.log('[IDE] Creating file:', filePath);
         
         try {
-          const response = await fetch(`${apiURL}/api/files`, {
+          const response = await fetch('/api/files', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -163,7 +162,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
 
   const loadFiles = async (path: string) => {
     try {
-      const response = await fetch(`${apiURL}/api/files?action=list&path=${encodeURIComponent(path)}`);
+      const response = await fetch(`/api/files?action=list&path=${encodeURIComponent(path)}`);
       const data = await response.json();
       if (data.success) {
         setFiles(data.files);
@@ -203,7 +202,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
     }
 
     try {
-      const response = await fetch(`${apiURL}/api/files?action=read&path=${encodeURIComponent(file.path)}`);
+      const response = await fetch(`/api/files?action=read&path=${encodeURIComponent(file.path)}`);
       const data = await response.json();
       if (data.success) {
         setFileContent(data.content);
@@ -239,7 +238,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
     if (!selectedFile) return;
 
     try {
-      const response = await fetch(`${apiURL}/api/files`, {
+      const response = await fetch('/api/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -261,7 +260,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
     if (!newFileName) return;
 
     try {
-      const response = await fetch(`${apiURL}/api/files`, {
+      const response = await fetch('/api/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -285,7 +284,7 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
     if (!confirm(`Are you sure you want to delete ${file.name}?`)) return;
 
     try {
-      const response = await fetch(`${apiURL}/api/files`, {
+      const response = await fetch('/api/files', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
