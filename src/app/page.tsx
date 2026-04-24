@@ -128,6 +128,17 @@ interface Message {
   error?: string;
 }
 
+// Available AI models
+const AI_MODELS = [
+  { id: 'auto', name: 'Auto (Best Available)', provider: 'G4F' },
+  { id: 'gpt-4', name: 'GPT-4', provider: 'G4F' },
+  { id: 'gpt-4o', name: 'GPT-4o', provider: 'G4F' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', provider: 'G4F' },
+  { id: 'claude-3-opus', name: 'Claude 3 Opus', provider: 'G4F' },
+  { id: 'claude-3-sonnet', name: 'Claude 3 Sonnet', provider: 'G4F' },
+  { id: 'gemini-pro', name: 'Gemini Pro', provider: 'G4F' },
+];
+
 export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -140,6 +151,8 @@ export default function Home() {
   const [filesToOpen, setFilesToOpen] = useState<string[]>([]);
   const [streamingContent, setStreamingContent] = useState<string>('');
   const [isStreaming, setIsStreaming] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('auto');
+  const [isDarkTheme, setIsDarkTheme] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingBoxRef = useRef<HTMLDivElement>(null);
 
@@ -180,7 +193,7 @@ export default function Home() {
         body: JSON.stringify({
           message: userMessage.content,
           provider: 'G4F',
-          model: 'auto',
+          model: selectedModel,
           stream: true
         })
       });
@@ -259,15 +272,14 @@ export default function Home() {
   };
 
   const handleOpenFolder = () => {
-    const folderPath = prompt('Enter folder path:', 'C:\\Users\\USER\\Desktop\\SUPERPROJECTS');
-    if (folderPath) {
+    const folderPath = prompt('Enter folder path (leave empty for default):', '');
+    if (folderPath !== null) {
       setOpenedFolder(folderPath);
     }
   };
 
   const getWorkingFolder = () => {
-    if (openedFolder) return openedFolder;
-    return 'C:\\Users\\USER\\Desktop\\SUPERPROJECTS';
+    return openedFolder || '';
   };
 
   useEffect(() => {
@@ -275,7 +287,7 @@ export default function Home() {
   }, [messages]);
 
   return (
-    <div className="h-screen flex bg-[#1e1e1e] text-white overflow-hidden">
+    <div className={`h-screen flex overflow-hidden ${isDarkTheme ? 'bg-[#1e1e1e] text-white' : 'bg-gray-100 text-gray-900'}`}>
       {/* Activity Bar */}
       <div className="w-12 bg-[#333333] flex flex-col items-center py-2">
         <button
@@ -427,12 +439,37 @@ export default function Home() {
               <Bot className="w-4 h-4 text-[#007acc]" />
               <span className="text-sm font-semibold">AI Assistant</span>
             </div>
-            <button
-              onClick={() => setShowChat(false)}
-              className="p-1 hover:bg-[#3c3c3c] rounded"
-            >
-              <X className="w-4 h-4 text-[#858585]" />
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Model Selector */}
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="bg-[#3c3c3c] text-white text-xs rounded px-2 py-1 border border-[#5c5c5c] focus:outline-none focus:border-[#007acc]"
+                title="Select AI Model"
+              >
+                {AI_MODELS.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name}
+                  </option>
+                ))}
+              </select>
+              
+              {/* Theme Toggle */}
+              <button
+                onClick={() => setIsDarkTheme(!isDarkTheme)}
+                className="p-1 hover:bg-[#3c3c3c] rounded text-xs"
+                title={isDarkTheme ? 'Switch to Light Theme' : 'Switch to Dark Theme'}
+              >
+                {isDarkTheme ? '🌙' : '☀️'}
+              </button>
+              
+              <button
+                onClick={() => setShowChat(false)}
+                className="p-1 hover:bg-[#3c3c3c] rounded"
+              >
+                <X className="w-4 h-4 text-[#858585]" />
+              </button>
+            </div>
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-3">

@@ -24,7 +24,7 @@ interface IDEProps {
 
 export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpenFile }: IDEProps) {
   const [files, setFiles] = useState<FileItem[]>([]);
-  const [currentPath, setCurrentPath] = useState(workingFolder || 'C:\\Users\\USER\\Desktop\\SUPERPROJECTS');
+  const [currentPath, setCurrentPath] = useState(workingFolder || '');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [fileContent, setFileContent] = useState('');
   const [isModified, setIsModified] = useState(false);

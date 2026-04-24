@@ -1,18 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { readFile, writeFile, mkdir, readdir, stat, unlink } from 'fs/promises';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { existsSync } from 'fs';
+import { tmpdir } from 'os';
+
+// Use temp directory that works on both Windows (local) and Linux (Render)
+const BASE_DIR = process.env.FILES_BASE_DIR || join(tmpdir(), 'api-unlocker-files');
+
+// Ensure base directory exists
+async function ensureBaseDir() {
+  if (!existsSync(BASE_DIR)) {
+    await mkdir(BASE_DIR, { recursive: true });
+  }
+  return BASE_DIR;
+}
+
+// Sanitize path to prevent directory traversal attacks
+function sanitizePath(inputPath: string): string {
+  // Remove any parent directory references
+  const cleanPath = inputPath.replace(/\.\.(\\|\/)/g, '').replace(/[:*?"<>|]/g, '_');
+  return resolve(BASE_DIR, cleanPath);
+}
 
 export async function GET(request: NextRequest) {
   try {
+    await ensureBaseDir();
+    
     const searchParams = request.nextUrl.searchParams;
     const action = searchParams.get('action');
-    const path = searchParams.get('path') || '';
-
+    const pathParam = searchParams.get('path') || '';
+    
     if (action === 'list') {
-      const dirPath = path || 'C:\\Users\\USER';
+      const dirPath = pathParam ? sanitizePath(pathParam) : BASE_DIR;
+      
       if (!existsSync(dirPath)) {
-        return NextResponse.json({ success: false, error: 'Directory does not exist' }, { status: 404 });
+        // Return empty list if directory doesn't exist
+        return NextResponse.json({ success: true, files: [] });
       }
 
       const files = await readdir(dirPath, { withFileTypes: true });
@@ -30,15 +53,17 @@ export async function GET(request: NextRequest) {
 
       return NextResponse.json({ success: true, files: fileList });
     } else if (action === 'read') {
-      if (!path) {
+      if (!pathParam) {
         return NextResponse.json({ success: false, error: 'Path is required' }, { status: 400 });
       }
 
-      if (!existsSync(path)) {
+      const filePath = sanitizePath(pathParam);
+      
+      if (!existsSync(filePath)) {
         return NextResponse.json({ success: false, error: 'File does not exist' }, { status: 404 });
       }
 
-      const content = await readFile(path, 'utf-8');
+      const content = await readFile(filePath, 'utf-8');
       return NextResponse.json({ success: true, content });
     }
 
@@ -54,27 +79,37 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    await ensureBaseDir();
+    
     const body = await request.json();
     const { action, path, content, name } = body;
 
     if (action === 'write') {
-      if (!path || !content) {
-        return NextResponse.json({ success: false, error: 'Path and content are required' }, { status: 400 });
+      if (!path) {
+        return NextResponse.json({ success: false, error: 'Path is required' }, { status: 400 });
       }
 
-      const dir = path.substring(0, path.lastIndexOf('\\'));
+      const filePath = sanitizePath(path);
+      const dir = filePath.substring(0, filePath.lastIndexOf('/') >= 0 ? filePath.lastIndexOf('/') : filePath.lastIndexOf('\\'));
+      
       if (!existsSync(dir)) {
         await mkdir(dir, { recursive: true });
       }
 
-      await writeFile(path, content, 'utf-8');
-      return NextResponse.json({ success: true });
+      await writeFile(filePath, content || '', 'utf-8');
+      return NextResponse.json({ success: true, path: filePath });
     } else if (action === 'create') {
-      if (!path || !name) {
-        return NextResponse.json({ success: false, error: 'Path and name are required' }, { status: 400 });
+      if (!name) {
+        return NextResponse.json({ success: false, error: 'Name is required' }, { status: 400 });
       }
 
-      const fullPath = join(path, name);
+      const dirPath = path ? sanitizePath(path) : BASE_DIR;
+      const fullPath = join(dirPath, name);
+      
+      if (!existsSync(dirPath)) {
+        await mkdir(dirPath, { recursive: true });
+      }
+      
       await writeFile(fullPath, '', 'utf-8');
       return NextResponse.json({ success: true, path: fullPath });
     } else if (action === 'mkdir') {
@@ -82,14 +117,16 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: false, error: 'Path is required' }, { status: 400 });
       }
 
-      await mkdir(path, { recursive: true });
+      const dirPath = sanitizePath(path);
+      await mkdir(dirPath, { recursive: true });
       return NextResponse.json({ success: true });
     } else if (action === 'delete') {
       if (!path) {
         return NextResponse.json({ success: false, error: 'Path is required' }, { status: 400 });
       }
 
-      await unlink(path);
+      const filePath = sanitizePath(path);
+      await unlink(filePath);
       return NextResponse.json({ success: true });
     }
 
