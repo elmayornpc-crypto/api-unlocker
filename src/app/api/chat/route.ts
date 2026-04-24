@@ -4,12 +4,13 @@ import { ProviderRequest } from '@/lib/providers/types';
 
 const SYSTEM_PROMPT = `You are Cascade, an AI coding assistant in a web IDE. You MUST generate clean, working code.
 
-STRICT RULES:
+CRITICAL RULES:
 1. EVERY code block MUST use format: \`\`\`language:filename.ext
 2. NEVER return HTML, CSS links, or external resources
-3. NEVER explain your thinking process
-4. ALWAYS provide COMPLETE, RUNNABLE code
-5. Use this format for each file:
+3. NEVER return GitHub or any website HTML
+4. NEVER explain your thinking process
+5. ALWAYS provide COMPLETE, RUNNABLE code
+6. Use this format for each file:
    
    Creating: filename.ext
    \`\`\`language:filename.ext
@@ -23,8 +24,8 @@ Creating: index.html
 <html>
 <head><title>App</title></head>
 <body>
-  <button id="btn">Click</button>
-  <script src="app.js"></script>
+  <button id=\"btn\">Click</button>
+  <script src=\"app.js\"></script>
 </body>
 </html>
 \`\`\`
@@ -35,6 +36,37 @@ document.getElementById('btn').onclick = () => alert('Clicked!');
 \`\`\`
 
 Summary: Created a working click counter app.`;
+
+// Filter function to remove HTML/CSS from AI responses
+function cleanAIResponse(content: string): string {
+  // Remove HTML tags and CSS links
+  let cleaned = content
+    .replace(/<link[^>]*>/gi, '')
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<!DOCTYPE[^>]*>/gi, '')
+    .replace(/<html[^>]*>[\s\S]*?<\/html>/gi, '')
+    .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
+    .replace(/<body[^>]*>[\s\S]*?<\/body>/gi, '')
+    .replace(/https?:\/\/[^\s<>"']+/gi, '') // Remove URLs
+    .replace(/github\.com/gi, '')
+    .replace(/githubassets\.com/gi, '')
+    .replace(/assets\/light-/gi, '')
+    .replace(/assets\/dark-/gi, '')
+    .replace(/\.css/gi, '')
+    .replace(/\.js/gi, '')
+    .replace(/data-color-theme/gi, '')
+    .replace(/data-a11y/gi, '');
+  
+  // If the cleaned content is too short or contains no code blocks, return original
+  const hasCodeBlock = /```[\w]+:[^\n]+\n/.test(cleaned);
+  if (!hasCodeBlock && cleaned.length < 50) {
+    console.log('[CHAT_API] Response appears to be invalid HTML, returning error');
+    return '';
+  }
+  
+  return cleaned.trim();
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -69,14 +101,14 @@ export async function POST(request: NextRequest) {
             
             const response = await apiUnlocker.generateResponseWithFailover(
               providerRequest,
-              preferredProvider
+              provider
             );
 
+            const content = cleanAIResponse(response.content);
             if (response.success) {
               controller.enqueue(encoder.encode(`data: ${JSON.stringify({ status: "generating" })}\n\n`));
               
               // Stream the content character by character
-              const content = response.content;
               for (let i = 0; i < content.length; i++) {
                 const chunk = content[i];
                 controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`));
@@ -108,14 +140,14 @@ export async function POST(request: NextRequest) {
     // Non-streaming response (original behavior)
     const response = await apiUnlocker.generateResponseWithFailover(
       providerRequest,
-      preferredProvider
+      provider
     );
 
     if (response.success) {
-      console.log(`[API_ROUTE] Success via ${response.provider}`);
+      const cleanedContent = cleanAIResponse(response.content);
       return NextResponse.json({
         success: true,
-        content: response.content,
+        content: cleanedContent,
         model: response.model,
         provider: response.provider
       });
