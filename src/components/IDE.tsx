@@ -36,8 +36,17 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
   const [activeTab, setActiveTab] = useState<FileItem | null>(null);
   const [aiStatus, setAiStatus] = useState<string>('');
   const [fileCreationProgress, setFileCreationProgress] = useState<{filename: string, status: string}[]>([]);
+  
+  // Execution states
+  const [isExecuting, setIsExecuting] = useState(false);
+  const [executionOutput, setExecutionOutput] = useState<string>('');
+  const [showExecutionPanel, setShowExecutionPanel] = useState(false);
+  
+  // Windsurf-style status panel
+  const [statusPanel, setStatusPanel] = useState<{type: 'info' | 'success' | 'error', message: string, details?: string} | null>(null);
 
   const editorRef = useRef<any>(null);
+  const executionPanelRef = useRef<HTMLDivElement>(null);
 
   // Parse code blocks from AI response and create files
   useEffect(() => {
@@ -69,23 +78,51 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
     console.log('[IDE] Response length:', response.length);
     
     setAiStatus('Parsing code blocks...');
+    setStatusPanel({
+      type: 'info',
+      message: 'Parsing AI response...',
+      details: 'Looking for code blocks'
+    });
     setFileCreationProgress([]);
     
-    // Parse code blocks with filenames like ```javascript:app.js or ```js:src/index.js
-    const codeBlockRegex = /```(\w+)?[:]?([^\n]*)?\n([\s\S]*?)```/g;
+    // Better regex for code blocks with format: ```language:filename
+    const codeBlockRegex = /```([a-zA-Z0-9_+-]+):([^\n]+)\n([\s\S]*?)```/g;
     const matches = [];
     let match;
 
     while ((match = codeBlockRegex.exec(response)) !== null) {
       const language = match[1] || 'txt';
-      const filename = match[2]?.trim() || `file.${language}`;
+      const filename = match[2]?.trim();
       const content = match[3].trim();
+      
+      // Skip if no filename
+      if (!filename) {
+        console.log('[IDE] Skipping code block without filename');
+        continue;
+      }
+      
       matches.push({ filename, language, content });
       console.log('[IDE] Found code block:', filename, language, content.length);
     }
 
     console.log('[IDE] Total code blocks found:', matches.length);
     setAiStatus(`Found ${matches.length} code blocks`);
+    
+    if (matches.length === 0) {
+      setStatusPanel({
+        type: 'error',
+        message: 'No code blocks found',
+        details: 'The AI response did not contain valid code blocks'
+      });
+      setTimeout(() => setStatusPanel(null), 3000);
+      return;
+    }
+    
+    setStatusPanel({
+      type: 'info',
+      message: `Found ${matches.length} file(s)`,
+      details: 'Creating files...'
+    });
 
     if (matches.length > 0) {
       // Ensure the working folder exists
@@ -144,11 +181,17 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
       }
       
       setAiStatus('All files created successfully');
+      setStatusPanel({
+        type: 'success',
+        message: `Created ${matches.length} file(s)`,
+        details: 'Files are ready in the explorer'
+      });
       
       // Clear progress after a delay
       setTimeout(() => {
         setFileCreationProgress([]);
         setAiStatus('');
+        setStatusPanel(null);
       }, 3000);
       
       // Refresh file list
@@ -253,6 +296,74 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
       }
     } catch (error) {
       console.error('Failed to save file:', error);
+    }
+  };
+
+  const executeFile = async () => {
+    if (!selectedFile) return;
+    
+    const ext = selectedFile.name.split('.').pop()?.toLowerCase();
+    const executableExts = ['sh', 'py', 'js', 'ts', 'rb', 'pl', 'php'];
+    
+    if (!executableExts.includes(ext || '')) {
+      setStatusPanel({
+        type: 'error',
+        message: 'Cannot execute this file type',
+        details: `Supported: .sh, .py, .js, .ts, .rb, .pl, .php`
+      });
+      return;
+    }
+    
+    setIsExecuting(true);
+    setShowExecutionPanel(true);
+    setExecutionOutput(`Executing ${selectedFile.name}...\n`);
+    setStatusPanel({
+      type: 'info',
+      message: `Running ${selectedFile.name}`,
+      details: 'Execution started...'
+    });
+    
+    try {
+      // First save the file
+      await saveFile();
+      
+      // Call execute API
+      const response = await fetch('/api/execute', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          path: selectedFile.path,
+          language: ext
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+        setExecutionOutput(prev => prev + (data.output || 'No output'));
+        setStatusPanel({
+          type: 'success',
+          message: 'Execution completed',
+          details: `Exit code: ${data.exitCode || 0}`
+        });
+      } else {
+        setExecutionOutput(prev => prev + `\nError: ${data.error}`);
+        setStatusPanel({
+          type: 'error',
+          message: 'Execution failed',
+          details: data.error
+        });
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+      setExecutionOutput(prev => prev + `\nError: ${errorMsg}`);
+      setStatusPanel({
+        type: 'error',
+        message: 'Execution failed',
+        details: errorMsg
+      });
+    } finally {
+      setIsExecuting(false);
     }
   };
 
@@ -419,6 +530,19 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
                 <span className="text-xs text-[#cccccc] truncate">{selectedFile.name}</span>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   {isModified && <span className="text-xs text-[#c5c5c5]">Modified</span>}
+                  
+                  {/* Execute Button */}
+                  {selectedFile && ['sh', 'py', 'js', 'ts', 'rb', 'pl', 'php'].includes(selectedFile.name.split('.').pop()?.toLowerCase() || '') && (
+                    <button
+                      onClick={executeFile}
+                      disabled={isExecuting}
+                      className="p-1 hover:bg-[#3c3c3c] rounded flex-shrink-0 disabled:opacity-50"
+                      title="Execute file"
+                    >
+                      <Play className={`w-4 h-4 ${isExecuting ? 'text-[#007acc] animate-pulse' : 'text-[#4ec9b0]'}`} />
+                    </button>
+                  )}
+                  
                   <button
                     onClick={saveFile}
                     className="p-1 hover:bg-[#3c3c3c] rounded flex-shrink-0"
@@ -480,6 +604,66 @@ export default function IDE({ workingFolder, aiResponse, onFileCreated, autoOpen
           </div>
         )}
       </div>
+
+      {/* Windsurf-style Status Panel */}
+      {statusPanel && (
+        <div className={`fixed bottom-4 left-1/2 transform -translate-x-1/2 px-4 py-2 rounded-lg shadow-lg z-40 flex items-center gap-3 ${
+          statusPanel.type === 'success' ? 'bg-[#4ec9b0] text-black' : 
+          statusPanel.type === 'error' ? 'bg-[#f44336] text-white' : 
+          'bg-[#007acc] text-white'
+        }`}>
+          <div className="flex flex-col">
+            <span className="text-sm font-semibold">{statusPanel.message}</span>
+            {statusPanel.details && (
+              <span className="text-xs opacity-90">{statusPanel.details}</span>
+            )}
+          </div>
+          <button
+            onClick={() => setStatusPanel(null)}
+            className="p-1 hover:bg-white/20 rounded"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Execution Panel (Terminal) */}
+      {showExecutionPanel && (
+        <div 
+          ref={executionPanelRef}
+          className="fixed bottom-0 left-0 right-0 h-48 bg-[#1e1e1e] border-t border-[#3c3c3c] z-30 flex flex-col"
+        >
+          <div className="flex items-center justify-between px-3 py-1 bg-[#252526] border-b border-[#3c3c3c]">
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[#cccccc] font-semibold">Terminal</span>
+              {isExecuting && (
+                <span className="text-xs text-[#007acc] animate-pulse">Running...</span>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setExecutionOutput('')}
+                className="text-xs text-[#858585] hover:text-[#cccccc] px-2 py-1"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setShowExecutionPanel(false)}
+                className="p-1 hover:bg-[#3c3c3c] rounded"
+              >
+                <X className="w-3 h-3 text-[#858585]" />
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 font-mono text-xs">
+            {executionOutput ? (
+              <pre className="text-[#cccccc] whitespace-pre-wrap">{executionOutput}</pre>
+            ) : (
+              <span className="text-[#858585]">No output yet. Execute a file to see results.</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* New File Dialog */}
       {showNewFileDialog && (
